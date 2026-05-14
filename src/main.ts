@@ -162,6 +162,7 @@ export default class RelatedNotesPlugin extends Plugin {
 
     if (leaf) {
         workspace.revealLeaf(leaf);
+        this.updateSidebar(workspace.getActiveFile());
     }
   }
 
@@ -228,6 +229,11 @@ export default class RelatedNotesPlugin extends Plugin {
 
   openSettings() {
     const setting = (this.app as any).setting;
+    if (!setting?.open || !setting?.openTabById) {
+      new Notice("Open Obsidian settings, then Related Notes, to configure this plugin.");
+      return;
+    }
+
     setting?.open?.();
     setting?.openTabById?.(this.manifest.id);
   }

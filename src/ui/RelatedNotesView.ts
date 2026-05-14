@@ -173,7 +173,7 @@ export class RelatedNotesView extends ItemView {
 
     const main = item.createDiv({ cls: "related-notes-item-main" });
     const titleRow = main.createDiv({ cls: "related-notes-item-title-row" });
-    const title = titleRow.createEl("a", { text: note.title, cls: "related-notes-link" });
+    const title = titleRow.createEl("a", { text: note.title, cls: "related-notes-link", href: "#" });
     title.onclick = (e) => {
       e.preventDefault();
       this.openNote(note.path, false);

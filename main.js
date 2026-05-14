@@ -6881,6 +6881,7 @@ var VaultIndexer = class {
       });
     } catch (e) {
       console.error(`Failed to index single file ${file.path}:`, e);
+      throw e;
     }
   }
 };
@@ -7075,7 +7076,7 @@ var RelatedNotesView = class extends import_obsidian2.ItemView {
     item.addClass(`is-score-${getScoreTone(note.score)}`);
     const main = item.createDiv({ cls: "related-notes-item-main" });
     const titleRow = main.createDiv({ cls: "related-notes-item-title-row" });
-    const title = titleRow.createEl("a", { text: note.title, cls: "related-notes-link" });
+    const title = titleRow.createEl("a", { text: note.title, cls: "related-notes-link", href: "#" });
     title.onclick = (e) => {
       e.preventDefault();
       this.openNote(note.path, false);
@@ -7248,6 +7249,7 @@ var RelatedNotesPlugin = class extends import_obsidian3.Plugin {
     }
     if (leaf) {
       workspace.revealLeaf(leaf);
+      this.updateSidebar(workspace.getActiveFile());
     }
   }
   updateSidebar(file) {
@@ -7303,6 +7305,10 @@ var RelatedNotesPlugin = class extends import_obsidian3.Plugin {
   }
   openSettings() {
     const setting = this.app.setting;
+    if (!setting?.open || !setting?.openTabById) {
+      new import_obsidian3.Notice("Open Obsidian settings, then Related Notes, to configure this plugin.");
+      return;
+    }
     setting?.open?.();
     setting?.openTabById?.(this.manifest.id);
   }

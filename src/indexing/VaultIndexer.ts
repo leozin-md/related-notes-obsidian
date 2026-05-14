@@ -116,6 +116,7 @@ export class VaultIndexer {
           });
       } catch (e) {
           console.error(`Failed to index single file ${file.path}:`, e);
+          throw e;
       }
   }
 }
