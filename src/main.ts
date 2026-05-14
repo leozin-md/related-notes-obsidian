@@ -1,4 +1,4 @@
-import { Plugin, TFile, WorkspaceLeaf, Notice } from "obsidian";
+import { Plugin, TFile, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import { RelatedNotesSettings, DEFAULT_SETTINGS } from "./types";
 import { RelatedNotesSettingTab } from "./settings";
 import { GeminiEmbeddingProvider } from "./embeddings/GeminiEmbeddingProvider";
@@ -31,7 +31,7 @@ export default class RelatedNotesPlugin extends Plugin {
     this.registerView(
       RELATED_NOTES_VIEW_TYPE,
       (leaf) => {
-        const view = new RelatedNotesView(leaf);
+        const view = new RelatedNotesView(leaf, this);
         view.setService(this.service);
         return view;
       }
@@ -85,13 +85,21 @@ export default class RelatedNotesPlugin extends Plugin {
         container.addClass("is-loading");
       }
       
-      container.createSpan({ text: ` ${text}`, cls: "related-notes-status-text" });
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      setIcon(icon, "refresh-cw");
+      container.createSpan({ text, cls: "related-notes-status-text" });
     } else if (status === "error") {
-      container.createSpan({ text: `⚠️ ${message || "API Error"}`, cls: "related-notes-status-text" });
-      container.setAttr("style", "color: var(--text-error)");
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      setIcon(icon, "alert-triangle");
+      container.createSpan({ text: message || "API Error", cls: "related-notes-status-text" });
+      container.addClass("is-error");
     } else if (status === "complete") {
-      container.createSpan({ text: `✅ Index Ready`, cls: "related-notes-status-text" });
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      setIcon(icon, "check-circle-2");
+      container.createSpan({ text: "Index ready", cls: "related-notes-status-text" });
     } else {
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      setIcon(icon, "links-coming-in");
       container.createSpan({ text: "Related Notes", cls: "related-notes-status-text" });
     }
   }
@@ -190,5 +198,37 @@ export default class RelatedNotesPlugin extends Plugin {
         new Notice(`Indexing paused: ${msg}. Progress saved.`);
         console.error(e);
     }
+  }
+
+  async indexCurrentFile(file?: TFile | null) {
+    const target = file ?? this.app.workspace.getActiveFile();
+
+    if (!target || target.extension !== "md") {
+      new Notice("Open a Markdown note to index it.");
+      return;
+    }
+
+    this.updateStatusBar("indexing", "Indexing current note", 0);
+
+    try {
+      await this.indexer.indexFile(target);
+      await this.store.flush();
+      this.updateStatusBar("complete");
+      this.updateSidebar(target);
+      new Notice(`Indexed ${target.basename}`);
+    } catch (e: any) {
+      const msg = e.message?.includes("429") || e.message?.includes("quota")
+        ? "Rate limit reached"
+        : "Indexing failed";
+      this.updateStatusBar("error", msg);
+      new Notice(msg);
+      console.error(e);
+    }
+  }
+
+  openSettings() {
+    const setting = (this.app as any).setting;
+    setting?.open?.();
+    setting?.openTabById?.(this.manifest.id);
   }
 }

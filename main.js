@@ -6919,13 +6919,38 @@ var RelatedNotesService = class {
 
 // src/ui/RelatedNotesView.ts
 var import_obsidian2 = require("obsidian");
+
+// src/ui/viewHelpers.ts
+function formatScore(score) {
+  const bounded = Math.max(0, Math.min(1, score));
+  return `${Math.round(bounded * 100)}%`;
+}
+function getScoreTone(score) {
+  if (score >= 0.8)
+    return "high";
+  if (score >= 0.6)
+    return "medium";
+  return "low";
+}
+function pathToWikilink(path, title) {
+  const withoutExtension = path.replace(/\.md$/i, "");
+  const basename = withoutExtension.split("/").pop() ?? withoutExtension;
+  if (withoutExtension === title || basename === title && !withoutExtension.includes("/")) {
+    return `[[${withoutExtension}]]`;
+  }
+  return `[[${withoutExtension}|${title}]]`;
+}
+
+// src/ui/RelatedNotesView.ts
 var RELATED_NOTES_VIEW_TYPE = "related-notes-view";
 var RelatedNotesView = class extends import_obsidian2.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
   service = null;
   currentFile = null;
-  constructor(leaf) {
-    super(leaf);
-  }
+  renderToken = 0;
   getViewType() {
     return RELATED_NOTES_VIEW_TYPE;
   }
@@ -6942,46 +6967,159 @@ var RelatedNotesView = class extends import_obsidian2.ItemView {
     this.updateView();
   }
   setCurrentFile(file) {
-    this.currentFile = file;
+    this.currentFile = file?.extension === "md" ? file : null;
     this.updateView();
   }
   async updateView() {
+    const token = ++this.renderToken;
     const container = this.containerEl.children[1];
     container.empty();
+    container.addClass("related-notes-view");
+    this.renderHeader(container);
     if (!this.currentFile) {
-      container.createEl("div", { text: "Open a Markdown note to see related notes.", cls: "pane-empty" });
+      this.renderState(container, {
+        icon: "file-text",
+        title: "Open a Markdown note",
+        description: "Related notes appear here when a note is active."
+      });
       return;
     }
-    if (!this.service)
+    if (!this.plugin.settings.geminiApiKey) {
+      this.renderState(container, {
+        icon: "key-round",
+        title: "Gemini API key missing",
+        description: "Add your API key before indexing or searching related notes.",
+        primaryAction: { label: "Open settings", onClick: () => this.plugin.openSettings() }
+      });
       return;
-    container.createEl("h4", { text: `Related to: ${this.currentFile.basename}` });
-    const loading = container.createEl("div", { text: "Loading related notes...", cls: "related-notes-loading" });
-    const result = await this.service.getRelatedNotes(this.currentFile.path);
-    console.log("[RelatedNotesView] Search result for", this.currentFile.path, ":", result);
+    }
+    if (!this.service) {
+      this.renderState(container, {
+        icon: "alert-circle",
+        title: "Related Notes is not ready",
+        description: "The related notes service has not initialized yet."
+      });
+      return;
+    }
+    const loading = this.renderState(container, {
+      icon: "refresh-cw",
+      title: "Loading related notes",
+      description: "Searching the local semantic index...",
+      loading: true
+    });
+    const result = await this.service.getRelatedNotes(
+      this.currentFile.path,
+      this.plugin.settings.relatedNotesLimit
+    );
+    if (token !== this.renderToken)
+      return;
     loading.remove();
     if (result.status === "not_indexed") {
-      const div = container.createDiv({ cls: "related-notes-empty" });
-      div.createEl("p", { text: "This note has not been indexed yet." });
+      this.renderState(container, {
+        icon: "scan-search",
+        title: "This note is not indexed yet",
+        description: "Index this note now, or reindex the vault to refresh all related-note data.",
+        primaryAction: { label: "Index this note", onClick: () => this.plugin.indexCurrentFile(this.currentFile) },
+        secondaryAction: { label: "Reindex vault", onClick: () => this.plugin.reindexVault() }
+      });
       return;
     }
     if (result.status === "error") {
-      container.createEl("div", { text: "Error loading related notes.", cls: "related-notes-error" });
+      this.renderState(container, {
+        icon: "alert-triangle",
+        title: "Could not load related notes",
+        description: "Try refreshing the panel or rebuilding the index.",
+        primaryAction: { label: "Retry", onClick: () => this.updateView() },
+        secondaryAction: { label: "Reindex vault", onClick: () => this.plugin.reindexVault() }
+      });
       return;
     }
     if (result.notes.length === 0) {
-      container.createEl("div", { text: "No related notes found.", cls: "related-notes-empty" });
+      this.renderState(container, {
+        icon: "search-x",
+        title: "No related notes found",
+        description: "The current note is indexed, but no similar notes were found.",
+        primaryAction: { label: "Refresh", onClick: () => this.updateView() }
+      });
       return;
     }
-    const list = container.createEl("ul", { cls: "related-notes-list" });
-    for (const note of result.notes) {
-      const li = list.createEl("li", { cls: "related-notes-item" });
-      const link = li.createEl("a", { text: note.title, cls: "related-notes-link" });
-      li.createEl("span", { text: ` (${(note.score * 100).toFixed(1)}%)`, cls: "related-notes-score" });
-      link.onclick = (e) => {
-        e.preventDefault();
-        this.app.workspace.openLinkText(note.path, "", false);
-      };
+    this.renderResults(container, result.notes);
+  }
+  renderHeader(container) {
+    const header = container.createDiv({ cls: "related-notes-header" });
+    const titleWrap = header.createDiv({ cls: "related-notes-title-wrap" });
+    const titleRow = titleWrap.createDiv({ cls: "related-notes-title-row" });
+    const icon = titleRow.createSpan({ cls: "related-notes-title-icon" });
+    (0, import_obsidian2.setIcon)(icon, "links-coming-in");
+    titleRow.createEl("h4", { text: "Related Notes", cls: "related-notes-title" });
+    titleWrap.createDiv({
+      text: this.currentFile ? this.currentFile.basename : "No active note",
+      cls: "related-notes-subtitle"
+    });
+    const toolbar = header.createDiv({ cls: "related-notes-toolbar" });
+    this.addToolbarButton(toolbar, "refresh-cw", "Refresh results", () => this.updateView());
+    this.addToolbarButton(toolbar, "scan-search", "Index current note", () => this.plugin.indexCurrentFile(this.currentFile));
+    this.addToolbarButton(toolbar, "database-zap", "Reindex vault", () => this.plugin.reindexVault());
+    this.addToolbarButton(toolbar, "settings", "Open settings", () => this.plugin.openSettings());
+  }
+  renderResults(container, notes) {
+    const summary = container.createDiv({ cls: "related-notes-summary" });
+    summary.createSpan({ text: `${notes.length} related note${notes.length === 1 ? "" : "s"}` });
+    const list = container.createDiv({ cls: "related-notes-list" });
+    for (const note of notes) {
+      this.renderResultItem(list, note);
     }
+  }
+  renderResultItem(list, note) {
+    const item = list.createDiv({ cls: "related-notes-item" });
+    item.addClass(`is-score-${getScoreTone(note.score)}`);
+    const main = item.createDiv({ cls: "related-notes-item-main" });
+    const titleRow = main.createDiv({ cls: "related-notes-item-title-row" });
+    const title = titleRow.createEl("a", { text: note.title, cls: "related-notes-link" });
+    title.onclick = (e) => {
+      e.preventDefault();
+      this.openNote(note.path, false);
+    };
+    titleRow.createSpan({ text: formatScore(note.score), cls: "related-notes-score" });
+    if (note.folder) {
+      main.createDiv({ text: note.folder, cls: "related-notes-path" });
+    }
+    if (note.preview) {
+      main.createDiv({ text: note.preview, cls: "related-notes-preview" });
+    }
+    const actions = item.createDiv({ cls: "related-notes-item-actions" });
+    this.addToolbarButton(actions, "file-input", "Open", () => this.openNote(note.path, false));
+    this.addToolbarButton(actions, "columns-2", "Open in new pane", () => this.openNote(note.path, true));
+    this.addToolbarButton(actions, "copy", "Copy wikilink", () => this.copyWikilink(note));
+  }
+  renderState(container, options) {
+    const state = container.createDiv({ cls: "related-notes-state" });
+    if (options.loading)
+      state.addClass("is-loading");
+    const icon = state.createDiv({ cls: "related-notes-state-icon" });
+    (0, import_obsidian2.setIcon)(icon, options.icon);
+    state.createEl("h5", { text: options.title, cls: "related-notes-state-title" });
+    state.createEl("p", { text: options.description, cls: "related-notes-state-description" });
+    if (options.primaryAction || options.secondaryAction) {
+      const actions = state.createDiv({ cls: "related-notes-state-actions" });
+      if (options.primaryAction) {
+        new import_obsidian2.ButtonComponent(actions).setButtonText(options.primaryAction.label).setCta().onClick(options.primaryAction.onClick);
+      }
+      if (options.secondaryAction) {
+        new import_obsidian2.ButtonComponent(actions).setButtonText(options.secondaryAction.label).onClick(options.secondaryAction.onClick);
+      }
+    }
+    return state;
+  }
+  addToolbarButton(parent, iconName, tooltip, onClick) {
+    new import_obsidian2.ExtraButtonComponent(parent).setIcon(iconName).setTooltip(tooltip).onClick(onClick);
+  }
+  openNote(path, newPane) {
+    this.app.workspace.openLinkText(path, "", newPane);
+  }
+  async copyWikilink(note) {
+    await navigator.clipboard.writeText(pathToWikilink(note.path, note.title));
+    new import_obsidian2.Notice("Wikilink copied");
   }
 };
 
@@ -7004,7 +7142,7 @@ var RelatedNotesPlugin = class extends import_obsidian3.Plugin {
     this.registerView(
       RELATED_NOTES_VIEW_TYPE,
       (leaf) => {
-        const view = new RelatedNotesView(leaf);
+        const view = new RelatedNotesView(leaf, this);
         view.setService(this.service);
         return view;
       }
@@ -7045,13 +7183,21 @@ var RelatedNotesPlugin = class extends import_obsidian3.Plugin {
       } else {
         container.addClass("is-loading");
       }
-      container.createSpan({ text: ` ${text}`, cls: "related-notes-status-text" });
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      (0, import_obsidian3.setIcon)(icon, "refresh-cw");
+      container.createSpan({ text, cls: "related-notes-status-text" });
     } else if (status === "error") {
-      container.createSpan({ text: `\u26A0\uFE0F ${message || "API Error"}`, cls: "related-notes-status-text" });
-      container.setAttr("style", "color: var(--text-error)");
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      (0, import_obsidian3.setIcon)(icon, "alert-triangle");
+      container.createSpan({ text: message || "API Error", cls: "related-notes-status-text" });
+      container.addClass("is-error");
     } else if (status === "complete") {
-      container.createSpan({ text: `\u2705 Index Ready`, cls: "related-notes-status-text" });
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      (0, import_obsidian3.setIcon)(icon, "check-circle-2");
+      container.createSpan({ text: "Index ready", cls: "related-notes-status-text" });
     } else {
+      const icon = container.createSpan({ cls: "related-notes-status-icon" });
+      (0, import_obsidian3.setIcon)(icon, "links-coming-in");
       container.createSpan({ text: "Related Notes", cls: "related-notes-status-text" });
     }
   }
@@ -7134,6 +7280,31 @@ var RelatedNotesPlugin = class extends import_obsidian3.Plugin {
       new import_obsidian3.Notice(`Indexing paused: ${msg}. Progress saved.`);
       console.error(e);
     }
+  }
+  async indexCurrentFile(file) {
+    const target = file ?? this.app.workspace.getActiveFile();
+    if (!target || target.extension !== "md") {
+      new import_obsidian3.Notice("Open a Markdown note to index it.");
+      return;
+    }
+    this.updateStatusBar("indexing", "Indexing current note", 0);
+    try {
+      await this.indexer.indexFile(target);
+      await this.store.flush();
+      this.updateStatusBar("complete");
+      this.updateSidebar(target);
+      new import_obsidian3.Notice(`Indexed ${target.basename}`);
+    } catch (e) {
+      const msg = e.message?.includes("429") || e.message?.includes("quota") ? "Rate limit reached" : "Indexing failed";
+      this.updateStatusBar("error", msg);
+      new import_obsidian3.Notice(msg);
+      console.error(e);
+    }
+  }
+  openSettings() {
+    const setting = this.app.setting;
+    setting?.open?.();
+    setting?.openTabById?.(this.manifest.id);
   }
 };
 /*! Bundled license information:

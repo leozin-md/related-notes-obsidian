@@ -10,6 +10,7 @@ tags_vault.csv
 *.log
 .env
 .env.*
+.test-dist/
 
 # OS/editor noise
 .DS_Store
