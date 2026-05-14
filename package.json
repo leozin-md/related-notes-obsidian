@@ -1,0 +1,31 @@
+{
+  "name": "related-notes-obsidian",
+  "version": "0.1.0",
+  "description": "Obsidian plugin for semantic related notes using Gemini embeddings.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit && node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "embeddings",
+    "gemini",
+    "lancedb",
+    "related-notes"
+  ],
+  "author": "Leonardo",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^5.2.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  }
+}

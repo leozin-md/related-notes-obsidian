@@ -1,0 +1,18 @@
+node_modules/
+
+# Obsidian plugin runtime data / local vault artifacts
+data.json
+index.json
+notas_com_indice.txt
+tags_vault.csv
+
+# Logs and local environment
+*.log
+.env
+.env.*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,60 @@
+.related-notes-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+
+.related-notes-item {
+  margin-bottom: 8px;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.related-notes-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.related-notes-link {
+  color: var(--text-accent);
+  text-decoration: none;
+  font-weight: 500;
+  display: block;
+}
+
+.related-notes-score {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.related-notes-loading, .related-notes-error, .related-notes-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Status Bar & Progress Bar */
+.related-notes-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.related-notes-progress-container {
+  width: 60px;
+  height: 4px;
+  background-color: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.related-notes-progress-bar {
+  height: 100%;
+  background-color: var(--interactive-accent);
+  transition: width 0.2s ease-in-out;
+}
+
+.related-notes-status-text {
+  font-size: var(--font-smaller);
+  white-space: nowrap;
+}
